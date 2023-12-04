@@ -305,7 +305,7 @@ func TestLastNull(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -331,7 +331,7 @@ func TestParseRowPanic(t *testing.T) {
 	tableMapEvent.ColumnMeta = []uint16{0, 108, 60, 765, 0, 765, 765, 4, 0, 0, 0, 765, 0, 0, 0, 3, 0, 3, 0, 765, 0, 0, 2, 108, 108, 108}
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -371,7 +371,7 @@ func TestParseJson(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -428,7 +428,7 @@ func TestParseJsonDecimal(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := RowsEvent{useDecimal: true}
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -477,7 +477,7 @@ func TestEnum(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -509,7 +509,7 @@ func TestMultiBytesEnum(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -543,7 +543,7 @@ func TestSet(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -582,7 +582,7 @@ func TestJsonNull(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -621,7 +621,7 @@ func TestJsonCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	rows := new(RowsEvent)
-	rows.tableIDSize = 6
+	rows.TableIDSize = 6
 	rows.tables = make(map[uint64]*TableMapEvent)
 	rows.tables[tableMapEvent.TableID] = tableMapEvent
 	rows.Version = 2
@@ -1161,7 +1161,7 @@ func TestRowsDataExtraData(t *testing.T) {
 		require.NoError(t, err)
 
 		rowsEvent := new(RowsEvent)
-		rowsEvent.tableIDSize = 6
+		rowsEvent.TableIDSize = 6
 		rowsEvent.tables = make(map[uint64]*TableMapEvent)
 		rowsEvent.tables[tableMapEvent.TableID] = tableMapEvent
 		rowsEvent.Version = 2
@@ -1368,7 +1368,7 @@ func TestInvalidEvent(t *testing.T) {
 
 	e2 := &RowsEvent{
 		Version:     1,
-		tableIDSize: 6,
+		TableIDSize: 6,
 	}
 	e2.tables = map[uint64]*TableMapEvent{}
 	e2.tables[0x140] = table

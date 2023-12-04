@@ -126,6 +126,11 @@ type BinlogSyncerConfig struct {
 	DiscardGTIDSet bool
 
 	EventCacheCount int
+
+	WatchDelete       bool
+	WatchUpdate       bool
+	WatchWrite        bool
+	StartParsingAfter uint32
 }
 
 // BinlogSyncer syncs binlog event from server.
@@ -192,6 +197,11 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
 	b.parser.SetVerifyChecksum(b.cfg.VerifyChecksum)
 	b.parser.SetRowsEventDecodeFunc(b.cfg.RowsEventDecodeFunc)
 	b.parser.SetTableMapOptionalMetaDecodeFunc(b.cfg.TableMapOptionalMetaDecodeFunc)
+	b.parser.StartParsingAfter = b.cfg.StartParsingAfter
+	b.parser.WatchDelete = b.cfg.WatchDelete
+	b.parser.WatchWrite = b.cfg.WatchWrite
+	b.parser.WatchUpdate = b.cfg.WatchUpdate
+
 	b.running = false
 	b.ctx, b.cancel = context.WithCancel(context.Background())
 

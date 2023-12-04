@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"encoding/binary"
+	errs "errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -21,6 +22,11 @@ var (
 )
 
 type BinlogParser struct {
+	WatchDelete       bool
+	WatchUpdate       bool
+	WatchWrite        bool
+	StartParsingAfter uint32
+
 	// "mysql" or "mariadb", if not set, use "mysql" by default
 	flavor string
 
@@ -153,7 +159,7 @@ func (p *BinlogParser) parseSingleEvent(r io.Reader, onEvent OnEventFunc) (bool,
 	var e Event
 	e, err = p.parseEvent(h, body, rawData)
 	if err != nil {
-		if err == errMissingTableMapEvent {
+		if errs.Is(err, errMissingTableMapEvent) {
 			return false, nil
 		}
 		return false, errors.Trace(err)
@@ -249,76 +255,7 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 			data = data[0 : len(data)-BinlogChecksumLength]
 		}
 
-		if h.EventType == ROTATE_EVENT {
-			e = &RotateEvent{}
-		} else if !p.rawMode {
-			switch h.EventType {
-			case QUERY_EVENT:
-				e = &QueryEvent{}
-			case MARIADB_QUERY_COMPRESSED_EVENT:
-				e = &QueryEvent{
-					compressed: true,
-				}
-			case XID_EVENT:
-				e = &XIDEvent{}
-			case TABLE_MAP_EVENT:
-				te := &TableMapEvent{
-					flavor:                 p.flavor,
-					optionalMetaDecodeFunc: p.tableMapOptionalMetaDecodeFunc,
-				}
-				if p.format.EventTypeHeaderLengths[TABLE_MAP_EVENT-1] == 6 {
-					te.tableIDSize = 4
-				} else {
-					te.tableIDSize = 6
-				}
-				e = te
-			case WRITE_ROWS_EVENTv0,
-				UPDATE_ROWS_EVENTv0,
-				DELETE_ROWS_EVENTv0,
-				WRITE_ROWS_EVENTv1,
-				DELETE_ROWS_EVENTv1,
-				UPDATE_ROWS_EVENTv1,
-				WRITE_ROWS_EVENTv2,
-				UPDATE_ROWS_EVENTv2,
-				DELETE_ROWS_EVENTv2,
-				MARIADB_WRITE_ROWS_COMPRESSED_EVENT_V1,
-				MARIADB_UPDATE_ROWS_COMPRESSED_EVENT_V1,
-				MARIADB_DELETE_ROWS_COMPRESSED_EVENT_V1,
-				PARTIAL_UPDATE_ROWS_EVENT: // Extension of UPDATE_ROWS_EVENT, allowing partial values according to binlog_row_value_options
-
-				e = p.newRowsEvent(h)
-			case ROWS_QUERY_EVENT:
-				e = &RowsQueryEvent{}
-			case GTID_EVENT:
-				e = &GTIDEvent{}
-			case ANONYMOUS_GTID_EVENT:
-				e = &GTIDEvent{}
-			case BEGIN_LOAD_QUERY_EVENT:
-				e = &BeginLoadQueryEvent{}
-			case EXECUTE_LOAD_QUERY_EVENT:
-				e = &ExecuteLoadQueryEvent{}
-			case MARIADB_ANNOTATE_ROWS_EVENT:
-				e = &MariadbAnnotateRowsEvent{}
-			case MARIADB_BINLOG_CHECKPOINT_EVENT:
-				e = &MariadbBinlogCheckPointEvent{}
-			case MARIADB_GTID_LIST_EVENT:
-				e = &MariadbGTIDListEvent{}
-			case MARIADB_GTID_EVENT:
-				ee := &MariadbGTIDEvent{}
-				ee.GTID.ServerID = h.ServerID
-				e = ee
-			case PREVIOUS_GTIDS_EVENT:
-				e = &PreviousGTIDsEvent{}
-			case INTVAR_EVENT:
-				e = &IntVarEvent{}
-			case TRANSACTION_PAYLOAD_EVENT:
-				e = p.newTransactionPayloadEvent()
-			default:
-				e = &GenericEvent{}
-			}
-		} else {
-			e = &GenericEvent{}
-		}
+		e = p.handleEvent(h)
 	}
 
 	var err error
@@ -345,6 +282,79 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 	return e, nil
 }
 
+func (p *BinlogParser) handleEvent(h *EventHeader) (e Event) {
+	// TODO replace with empty event?
+	e = &GenericEvent{}
+
+	if h.EventType == ROTATE_EVENT {
+		e = &RotateEvent{}
+	} else if !p.rawMode {
+		switch h.EventType {
+		case QUERY_EVENT:
+			e = &QueryEvent{}
+		case MARIADB_QUERY_COMPRESSED_EVENT:
+			e = &QueryEvent{
+				compressed: true,
+			}
+		case XID_EVENT:
+			e = &XIDEvent{}
+		case TABLE_MAP_EVENT:
+			te := &TableMapEvent{
+				flavor:                 p.flavor,
+				optionalMetaDecodeFunc: p.tableMapOptionalMetaDecodeFunc,
+			}
+			if p.format.EventTypeHeaderLengths[TABLE_MAP_EVENT-1] == 6 {
+				te.tableIDSize = 4
+			} else {
+				te.tableIDSize = 6
+			}
+			e = te
+		case WRITE_ROWS_EVENTv0, WRITE_ROWS_EVENTv1, WRITE_ROWS_EVENTv2, MARIADB_WRITE_ROWS_COMPRESSED_EVENT_V1:
+			if p.WatchWrite && h.LogPos > p.StartParsingAfter {
+				e = p.newRowsEvent(h)
+			}
+		case UPDATE_ROWS_EVENTv0, UPDATE_ROWS_EVENTv1, UPDATE_ROWS_EVENTv2, MARIADB_UPDATE_ROWS_COMPRESSED_EVENT_V1,
+			PARTIAL_UPDATE_ROWS_EVENT: // Extension of UPDATE_ROWS_EVENT, allowing partial values according to binlog_row_value_options
+			if p.WatchUpdate && h.LogPos > p.StartParsingAfter {
+				e = p.newRowsEvent(h)
+			}
+		case DELETE_ROWS_EVENTv0, DELETE_ROWS_EVENTv1, DELETE_ROWS_EVENTv2, MARIADB_DELETE_ROWS_COMPRESSED_EVENT_V1:
+			if p.WatchDelete && h.LogPos > p.StartParsingAfter {
+				e = p.newRowsEvent(h)
+			}
+		case ROWS_QUERY_EVENT:
+			e = &RowsQueryEvent{}
+		case GTID_EVENT:
+			e = &GTIDEvent{}
+		case ANONYMOUS_GTID_EVENT:
+			e = &GTIDEvent{}
+		case BEGIN_LOAD_QUERY_EVENT:
+			e = &BeginLoadQueryEvent{}
+		case EXECUTE_LOAD_QUERY_EVENT:
+			e = &ExecuteLoadQueryEvent{}
+		case MARIADB_ANNOTATE_ROWS_EVENT:
+			e = &MariadbAnnotateRowsEvent{}
+		case MARIADB_BINLOG_CHECKPOINT_EVENT:
+			e = &MariadbBinlogCheckPointEvent{}
+		case MARIADB_GTID_LIST_EVENT:
+			e = &MariadbGTIDListEvent{}
+		case MARIADB_GTID_EVENT:
+			ee := &MariadbGTIDEvent{}
+			ee.GTID.ServerID = h.ServerID
+			e = ee
+		case PREVIOUS_GTIDS_EVENT:
+			e = &PreviousGTIDsEvent{}
+		case INTVAR_EVENT:
+			e = &IntVarEvent{}
+		case TRANSACTION_PAYLOAD_EVENT:
+			e = p.newTransactionPayloadEvent()
+		default:
+			e = &GenericEvent{}
+		}
+	}
+	return e
+}
+
 // Parse: Given the bytes for a a binary log event: return the decoded event.
 // With the exception of the FORMAT_DESCRIPTION_EVENT event type
 // there must have previously been passed a FORMAT_DESCRIPTION_EVENT
@@ -367,10 +377,15 @@ func (p *BinlogParser) Parse(data []byte) (*BinlogEvent, error) {
 		return nil, fmt.Errorf("invalid data size %d in event %s, less event length %d", len(data), h.EventType, eventLen)
 	}
 
-	e, err := p.parseEvent(h, data, rawData)
+	var e Event
+	//if h.EventType == TABLE_MAP_EVENT || h.EventType == FORMAT_DESCRIPTION_EVENT || h.EventType == ROTATE_EVENT ||
+	//	(h.EventType == DELETE_ROWS_EVENTv0 || h.EventType == DELETE_ROWS_EVENTv1 || h.EventType == DELETE_ROWS_EVENTv2 ||
+	//		h.EventType == MARIADB_DELETE_ROWS_COMPRESSED_EVENT_V1) {
+	e, err = p.parseEvent(h, data, rawData)
 	if err != nil {
 		return nil, err
 	}
+	//}
 
 	return &BinlogEvent{RawData: rawData, Header: h, Event: e}, nil
 }

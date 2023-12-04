@@ -126,6 +126,11 @@ type BinlogSyncerConfig struct {
 
 	EventCacheCount int
 
+	WatchDelete       bool
+	WatchUpdate       bool
+	WatchWrite        bool
+	StartParsingAfter uint32
+
 	// SynchronousEventHandler is used for synchronous event handling.
 	// This should not be used together with StartBackupWithHandler.
 	// If this is not nil, GetEvent does not need to be called.
@@ -201,6 +206,11 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
 	b.parser.SetVerifyChecksum(b.cfg.VerifyChecksum)
 	b.parser.SetRowsEventDecodeFunc(b.cfg.RowsEventDecodeFunc)
 	b.parser.SetTableMapOptionalMetaDecodeFunc(b.cfg.TableMapOptionalMetaDecodeFunc)
+	b.parser.StartParsingAfter = b.cfg.StartParsingAfter
+	b.parser.WatchDelete = b.cfg.WatchDelete
+	b.parser.WatchWrite = b.cfg.WatchWrite
+	b.parser.WatchUpdate = b.cfg.WatchUpdate
+
 	b.running = false
 	b.ctx, b.cancel = context.WithCancel(context.Background())
 
@@ -301,7 +311,7 @@ func (b *BinlogSyncer) registerSlave() error {
 		b.killConnection(b.c, b.lastConnectionID)
 	}
 
-	// save last last connection id for kill
+	// save last connection id for kill
 	b.lastConnectionID = b.c.GetConnectionID()
 
 	//for mysql 5.6+, binlog has a crc32 checksum
